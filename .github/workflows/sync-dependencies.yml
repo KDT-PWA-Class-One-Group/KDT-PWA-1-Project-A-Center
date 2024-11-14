@@ -36,25 +36,23 @@ jobs:
           git config --global credential.helper store
           echo "https://$GITHUB_TOKEN:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Sync Dependencies
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: |
-          ls -la  # 디렉토리 구조 확인
-          # Center의 dependencies를 자식 저장소들에 복사
-          node .github/scripts/sync-dependencies.js
+          - name: Sync Dependencies
+            env:
+              GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+            run: |
+              # Center의 dependencies를 자식 저장소들에 복사
+              node .github/scripts/sync-dependencies.js
 
-          # 변경 내용 확인
-          git status
+              # 변경사항 커밋
+              git add */package.json
+              git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
 
-          # 변경사항 커밋
-          git add */package.json
-          git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
+              # Left 저장소로 push
+              echo "Pushing to Left repository..."
+              git remote add left "https://$GH_TOKEN@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git"
+              git push left `git subtree split --prefix Project-A-Left HEAD`:main --force
 
-          # Left 저장소로 push
-          git remote add left "https://$GITHUB_TOKEN@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git"
-          git subtree push --prefix Project-A-Left left main || true
-
-          # Right 저장소로 push
-          git remote add right "https://$GITHUB_TOKEN@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git"
-          git subtree push --prefix Project-A-Right right main || true
+              # Right 저장소로 push
+              echo "Pushing to Right repository..."
+              git remote add right "https://$GH_TOKEN@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git"
+              git push right `git subtree split --prefix Project-A-Right HEAD`:main --force
