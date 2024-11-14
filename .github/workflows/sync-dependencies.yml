@@ -1,0 +1,45 @@
+name: Sync Dependencies
+
+on:
+  push:
+    paths:
+      - 'package.json'
+      - 'yarn.lock'
+    branches:
+      - main
+
+jobs:
+  sync-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Sync Dependencies
+        run: |
+          # Center의 dependencies를 자식 저장소들에 복사
+          node .github/scripts/sync-dependencies.js
+
+          # 변경사항 커밋 및 푸시
+          git add Project-A-Left/package.json Project-A-Right/package.json
+          git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
+
+          # Left 저장소로 push
+          git subtree push --prefix Project-A-Left https://${{ secrets.PAT_TOKEN }}@github.com/YOUR_USERNAME/Project-A-Left.git main
+
+          # Right 저장소로 push
+          git subtree push --prefix Project-A-Right https://${{ secrets.PAT_TOKEN }}@github.com/YOUR_USERNAME/Project-A-Right.git main
