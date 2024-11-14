@@ -14,12 +14,15 @@ permissions:
 
 jobs:
   sync-dependencies:
+    strategy:
+      matrix:
+        repo: ['Left', 'Right']
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout child repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          repository: KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-${{ matrix.repo }}
           token: ${{ secrets.PAT_TOKEN }}
 
       - name: Configure Git
@@ -34,7 +37,7 @@ jobs:
             -L https://raw.githubusercontent.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Center/main/package.json \
             -o package.json
 
-          # yarn.lock 다운로드
+          # yarn.lock 다운로드 (선택적)
           curl -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
             -L https://raw.githubusercontent.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Center/main/yarn.lock \
             -o yarn.lock
@@ -42,11 +45,12 @@ jobs:
       - name: Update Dependencies
         run: |
           if [[ -n $(git status --porcelain) ]]; then
+            echo "Changes detected in ${{ matrix.repo }} repository"
             git add package.json yarn.lock
             git commit -m "chore: sync dependencies from center"
             git push
           else
-            echo "No changes to commit"
+            echo "No changes to commit in ${{ matrix.repo }} repository"
           fi
 
       - name: Install dependencies
