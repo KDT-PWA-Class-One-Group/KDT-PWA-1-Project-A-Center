@@ -35,11 +35,11 @@ jobs:
           node .github/scripts/sync-dependencies.js
 
           # 변경사항 커밋 및 푸시
-          git add Project-A-Team-Left/package.json Project-A-Team-Right/package.json
+          git add Project-A-Left/package.json Project-A-Right/package.json
           git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
 
-          # Left 저장소로 push
-          git subtree push --prefix Project-A-Team-Left https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git main
+          # Left 저장소로 push (로컬 prefix는 Project-A-Left 사용)
+          git subtree push --prefix Project-A-Left https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git main
 
-          # Right 저장소로 push
-          git subtree push --prefix Project-A-Team-Right https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git main
+          # Right 저장소로 push (로컬 prefix는 Project-A-Right 사용)
+          git subtree push --prefix Project-A-Right https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git main
