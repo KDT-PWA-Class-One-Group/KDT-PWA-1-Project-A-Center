@@ -37,16 +37,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           echo "Cloning Left repository..."
-          git clone https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git temp-left
+          AUTH_TOKEN=$(echo ${{ secrets.PAT_TOKEN }} | sed 's/./&/g')
+          git clone "https://${AUTH_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git" temp-left
 
           echo "Copying package.json..."
           cp package.json temp-left/
 
           cd temp-left
           if [[ -n $(git status --porcelain) ]]; then
+            git config --local user.name "github-actions[bot]"
+            git config --local user.email "github-actions[bot]@users.noreply.github.com"
             git add package.json
             git commit -m "chore: sync dependencies from center"
-            git push
+            git push "https://${AUTH_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git" main
           else
             echo "No changes to commit"
           fi
