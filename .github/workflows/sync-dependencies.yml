@@ -17,6 +17,8 @@ jobs:
     strategy:
       matrix:
         repo: ['Left', 'Right']
+      fail-fast: false # 하나가 실패해도 다른 것 계속 실행
+
     runs-on: ubuntu-latest
     steps:
       - name: Checkout child repository
@@ -24,6 +26,7 @@ jobs:
         with:
           repository: KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-${{ matrix.repo }}
           token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 1
 
       - name: Configure Git
         run: |
@@ -32,23 +35,29 @@ jobs:
 
       - name: Download dependencies files
         run: |
-          # package.json 다운로드
-          curl -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            -L https://raw.githubusercontent.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Center/main/package.json \
-            -o package.json
+          echo "Downloading files for ${{ matrix.repo }} repository..."
 
-          # yarn.lock 다운로드 (선택적)
-          curl -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
-            -L https://raw.githubusercontent.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Center/main/yarn.lock \
-            -o yarn.lock
+          # package.json 다운로드
+          STATUS=$(curl -s -o package.json -w "%{http_code}" -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -L https://raw.githubusercontent.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Center/main/package.json)
+
+          if [ $STATUS -ne 200 ]; then
+            echo "Failed to download package.json (Status: $STATUS)"
+            exit 1
+          fi
 
       - name: Update Dependencies
         run: |
           if [[ -n $(git status --porcelain) ]]; then
             echo "Changes detected in ${{ matrix.repo }} repository"
-            git add package.json yarn.lock
+            git add package.json
             git commit -m "chore: sync dependencies from center"
-            git push
+            git push || {
+              echo "Push failed. Fetching latest changes and retrying..."
+              git fetch
+              git rebase origin/main
+              git push
+            }
           else
             echo "No changes to commit in ${{ matrix.repo }} repository"
           fi
