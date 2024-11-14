@@ -36,23 +36,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          echo "Configuring git credentials..."
-          git config --global credential.helper store
-          echo "https://oauth2:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
-
           echo "Cloning Left repository..."
-          git clone https://oauth2:${GITHUB_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git temp-left
+          git clone https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git temp-left
 
           echo "Copying package.json..."
-          cp Project-A-Left/package.json temp-left/
+          cp package.json temp-left/
 
-          echo "Committing changes..."
           cd temp-left
-          git add package.json
-          git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
-
-          echo "Pushing changes..."
-          git push origin main
+          if [[ -n $(git status --porcelain) ]]; then
+            git add package.json
+            git commit -m "chore: sync dependencies from center"
+            git push
+          else
+            echo "No changes to commit"
+          fi
           cd ..
 
       - name: Update Right Repository
@@ -60,16 +57,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           echo "Cloning Right repository..."
-          git clone https://oauth2:${GITHUB_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git temp-right
+          git clone https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git temp-right
 
           echo "Copying package.json..."
-          cp Project-A-Right/package.json temp-right/
+          cp package.json temp-right/
 
-          echo "Committing changes..."
           cd temp-right
-          git add package.json
-          git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
-
-          echo "Pushing changes..."
-          git push origin main
+          if [[ -n $(git status --porcelain) ]]; then
+            git add package.json
+            git commit -m "chore: sync dependencies from center"
+            git push
+          else
+            echo "No changes to commit"
+          fi
           cd ..
