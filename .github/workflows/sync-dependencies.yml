@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-${{ matrix.repo }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           fetch-depth: 1
 
       - name: Configure Git
@@ -56,11 +56,11 @@ jobs:
             echo "Changes detected in ${{ matrix.repo }} repository"
             git add package.json
             git commit -m "chore: sync dependencies from center"
-            git push || {
+            git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-${{ matrix.repo }}.git || {
               echo "Push failed. Fetching latest changes and retrying..."
               git fetch
               git rebase origin/main
-              git push
+              git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-${{ matrix.repo }}.git
             }
           else
             echo "No changes to commit in ${{ matrix.repo }} repository"
