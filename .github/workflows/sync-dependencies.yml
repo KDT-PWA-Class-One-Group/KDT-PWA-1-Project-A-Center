@@ -1,6 +1,7 @@
 name: Sync Dependencies
 
 on:
+  workflow_dispatch: # 수동 실행 트리거
   push:
     paths:
       - 'package.json'
@@ -21,45 +22,33 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'yarn'
-
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Update Left Repository
+      - name: Download dependencies files
         run: |
-          echo "Updating Left repository..."
-          cp package.json ../KDT-PWA-1-Project-A-Team-Left
+          # package.json 다운로드
+          curl -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -L https://raw.githubusercontent.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Center/main/package.json \
+            -o package.json
 
-          cd ../KDT-PWA-1-Project-A-Team-Left
+          # yarn.lock 다운로드
+          curl -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            -L https://raw.githubusercontent.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Center/main/yarn.lock \
+            -o yarn.lock
+
+      - name: Update Dependencies
+        run: |
           if [[ -n $(git status --porcelain) ]]; then
-            git config --local user.name "github-actions[bot]"
-            git config --local user.email "github-actions[bot]@users.noreply.github.com"
-            git add package.json
+            git add package.json yarn.lock
             git commit -m "chore: sync dependencies from center"
-            git push "https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git" main
+            git push
           else
             echo "No changes to commit"
           fi
-          cd ../KDT-PWA-1-Project-A-Team-Center
 
-      - name: Update Right Repository
-        run: |
-          echo "Updating Right repository..."
-          cp package.json ../KDT-PWA-1-Project-A-Team-Right
-
-          cd ../KDT-PWA-1-Project-A-Team-Right
-          if [[ -n $(git status --porcelain) ]]; then
-            git add package.json
-            git commit -m "chore: sync dependencies from center"
-            git push "https://${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git" main
-          else
-            echo "No changes to commit"
-          fi
-          cd ../KDT-PWA-1-Project-A-Team-Center
+      - name: Install dependencies
+        if: success()
+        run: yarn install
