@@ -40,11 +40,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
+          ls -la  # 디렉토리 구조 확인
           # Center의 dependencies를 자식 저장소들에 복사
           node .github/scripts/sync-dependencies.js
 
+          # 변경 내용 확인
+          git status
+
           # 변경사항 커밋
-          git add Project-A-Left/package.json Project-A-Right/package.json
+          git add */package.json
           git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
 
           # Left 저장소로 push
