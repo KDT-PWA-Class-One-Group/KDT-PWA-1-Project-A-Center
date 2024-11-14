@@ -32,40 +32,44 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Clone and Update Left Repository
+      - name: Update Left Repository
         env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Clone Left repository
-          git clone https://${GH_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git temp-left
+          echo "Configuring git credentials..."
+          git config --global credential.helper store
+          echo "https://oauth2:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
 
-          # Copy package.json
+          echo "Cloning Left repository..."
+          git clone https://oauth2:${GITHUB_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git temp-left
+
+          echo "Copying package.json..."
           cp Project-A-Left/package.json temp-left/
 
-          # Commit and push changes
+          echo "Committing changes..."
           cd temp-left
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json
           git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
-          git push
+
+          echo "Pushing changes..."
+          git push origin main
           cd ..
 
-      - name: Clone and Update Right Repository
+      - name: Update Right Repository
         env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Clone Right repository
-          git clone https://${GH_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git temp-right
+          echo "Cloning Right repository..."
+          git clone https://oauth2:${GITHUB_TOKEN}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git temp-right
 
-          # Copy package.json
+          echo "Copying package.json..."
           cp Project-A-Right/package.json temp-right/
 
-          # Commit and push changes
+          echo "Committing changes..."
           cd temp-right
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json
           git commit -m "chore: sync dependencies from center" || echo "No changes to commit"
-          git push
+
+          echo "Pushing changes..."
+          git push origin main
           cd ..
