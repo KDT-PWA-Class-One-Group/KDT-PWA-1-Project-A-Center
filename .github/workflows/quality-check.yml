@@ -1,0 +1,48 @@
+# .github/workflows/quality-check.yml
+name: Code Quality Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: |
+          cd shared
+          yarn install
+
+      - name: Lint check
+        run: yarn lint
+
+      - name: Type check
+        run: yarn type-check
+
+      - name: Test
+        run: yarn test
+
+      - name: Report Status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { status } = process.env;
+            const emoji = status === 'success' ? '✅' : '❌';
+            const body = `${emoji} Quality check: ${status}\n\nChecks completed:\n- Lint\n- Type check\n- Tests`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              body
+            });

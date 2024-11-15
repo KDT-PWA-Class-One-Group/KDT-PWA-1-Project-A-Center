@@ -1,0 +1,18 @@
+# .github/actions/sync-files/action.yml
+name: 'Sync Shared Files'
+description: 'Synchronize shared configuration files to team repositories'
+
+inputs:
+  target-repo:
+    description: 'Target repository name'
+    required: true
+  source-dir:
+    description: 'Source directory containing files to sync'
+    required: true
+  pat-token:
+    description: 'Personal access token'
+    required: true
+
+runs:
+  using: 'node20'
+  main: 'index.js'

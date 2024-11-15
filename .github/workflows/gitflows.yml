@@ -1,0 +1,79 @@
+# .github/workflows/gitflow.yml
+name: GitFlow Workflow
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'release/**'
+      - 'hotfix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  branch-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check branch naming convention
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          if [[ $BRANCH_NAME =~ ^(feature|release|hotfix)/ ]]; then
+            echo "Branch naming follows GitFlow convention"
+          elif [[ $BRANCH_NAME == "main" || $BRANCH_NAME == "develop" ]]; then
+            echo "Main or develop branch detected"
+          else
+            echo "Branch name does not follow GitFlow convention"
+            exit 1
+          fi
+
+  validate-pr:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PR target branch
+        run: |
+          BASE_BRANCH=${{ github.base_ref }}
+          HEAD_BRANCH=${{ github.head_ref }}
+
+          if [[ $HEAD_BRANCH == feature/* && $BASE_BRANCH != "develop" ]]; then
+            echo "Feature branches should merge into develop"
+            exit 1
+          fi
+
+          if [[ $HEAD_BRANCH == release/* && $BASE_BRANCH != "main" && $BASE_BRANCH != "develop" ]]; then
+            echo "Release branches should merge into main and develop"
+            exit 1
+          fi
+
+          if [[ $HEAD_BRANCH == hotfix/* && $BASE_BRANCH != "main" && $BASE_BRANCH != "develop" ]]; then
+            echo "Hotfix branches should merge into main and develop"
+            exit 1
+          fi
+
+  sync-branches:
+    needs: [validate-pr]
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Sync branches after merge
+        run: |
+          if [[ "${{ github.base_ref }}" == "main" && "${{ github.head_ref }}" =~ ^(release|hotfix)/ ]]; then
+            git checkout develop
+            git merge main
+            git push origin develop
+          fi
