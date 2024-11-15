@@ -121,7 +121,7 @@ jobs:
         run: |
           cd target-repo
 
-          # 필수 설정 파일 확인
+          # 필수 설정 파일 확인 (문법 오류 수정)
           REQUIRED_FILES=(
             "shared/.eslintrc.json"
             "shared/.prettierrc"
@@ -148,7 +148,8 @@ jobs:
       - name: Create and switch to sync branch
         working-directory: target-repo
         run: |
-          git checkout -b sync/shared-update
+          git checkout -b sync/shared-update || git checkout sync/shared-update
+          git reset --hard origin/main
 
       - name: Commit and push changes
         working-directory: target-repo
@@ -158,26 +159,19 @@ jobs:
           if git diff --cached --quiet; then
             echo "변경사항이 없습니다."
           else
-            # 변경된 파일 목록 생성
             CHANGED_FILES=$(git diff --cached --name-only)
 
-            # 커밋 메시지 생성
-            COMMIT_MSG=$(cat << EOF
-            chore: shared 설정 파일 동기화
+            git commit -m "chore: shared 설정 파일 동기화
 
             동기화된 파일:
             $(echo "$CHANGED_FILES" | sed 's/^/- /')
 
             🔄 자동 동기화 완료
             - 시간: $(date)
-            - 대상: ${{ matrix.team.repo }}
-            EOF
-            )
+            - 대상: ${{ matrix.team.repo }}"
 
-            git commit -m "$COMMIT_MSG"
             git push -f origin sync/shared-update
 
-            # PR 생성
             gh pr create \
               --title "chore: shared 설정 파일 동기화" \
               --body "## 설정 파일 동기화
@@ -192,7 +186,7 @@ jobs:
 
               자동으로 생성된 PR입니다. 리뷰 후 병합해주세요." \
               --base main \
-              --head sync/shared-update
+              --head sync/shared-update || true
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
