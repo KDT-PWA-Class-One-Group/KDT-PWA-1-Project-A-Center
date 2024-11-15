@@ -26,17 +26,19 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('shared/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-yarn-
 
       - name: Install dependencies
         working-directory: ./shared
         run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "Package.json contents:"
+          cat package.json
           yarn install --frozen-lockfile
-          yarn cache list
 
-      # validate 스크립트 대신 각각의 검사를 직접 실행
       - name: Run Lint
         working-directory: ./shared
         run: yarn lint
