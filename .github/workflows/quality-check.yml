@@ -24,17 +24,15 @@ jobs:
         working-directory: ./shared
         run: yarn install --frozen-lockfile
 
-      - name: Type check
-        working-directory: ./shared
-        run: yarn type-check
-
-      - name: Lint and Format check
+      - name: Run quality checks
         working-directory: ./shared
         run: |
           yarn lint
           yarn format:check
+          yarn type-check
 
       - name: Report Status
+        if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
             echo "✅ All quality checks passed!"
