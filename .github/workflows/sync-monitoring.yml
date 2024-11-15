@@ -2,45 +2,60 @@ name: Sync Monitoring
 
 on:
   workflow_run:
-    workflows: ["Sync Project Setup"]
+    workflows: ["Sync Shared Directory"]
     types:
       - completed
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check sync logs
+      - name: Check workflow status
+        id: check
         run: |
-          if [ -d "logs" ]; then
-            echo "최근 동기화 로그:"
-            ls -lt logs | head -n 5
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "message=동기화 작업이 실패했습니다." >> $GITHUB_OUTPUT
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "message=동기화가 성공적으로 완료되었습니다." >> $GITHUB_OUTPUT
+          fi
 
-            # 최근 로그 파일 읽기
-            LATEST_LOG=$(ls -t logs | head -n 1)
-            if [ ! -z "$LATEST_LOG" ]; then
-              echo "로그 내용:"
-              cat "logs/$LATEST_LOG"
+      - name: Create status report
+        run: |
+          {
+            echo "### 동기화 모니터링 보고서"
+            echo "- 실행 시간: $(date)"
+            echo "- 워크플로우: ${{ github.event.workflow_run.name }}"
+            echo "- 상태: ${{ steps.check.outputs.status }}"
+            echo "- 메시지: ${{ steps.check.outputs.message }}"
+
+            if [ "${{ steps.check.outputs.status }}" == "failed" ]; then
+              echo "### 실패 시 조치사항"
+              echo "1. 워크플로우 로그 확인"
+              echo "2. 자식 저장소의 sync/ 브랜치 상태 확인"
+              echo "3. CI 파이프라인 검증"
             fi
-          fi
+          } > report.md
 
-      - name: Create sync report
-        if: always()
-        run: |
-          echo "### 동기화 상태 보고서" > report.md
-          echo "실행 시간: $(date)" >> report.md
-          echo "상태: ${{ job.status }}" >> report.md
-
-          if [ -d "logs" ]; then
-            echo "### 최근 동기화 기록" >> report.md
-            ls -lt logs | head -n 5 >> report.md
-          fi
-
-      - name: Upload report
-        if: always()
-        uses: actions/upload-artifact@v3
+      - name: Create issue on failure
+        if: steps.check.outputs.status == 'failed'
+        uses: actions/github-script@v7
         with:
-          name: sync-report
-          path: report.md
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('report.md', 'utf8');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `동기화 모니터링 실패 - ${new Date().toISOString()}`,
+              body: report,
+              labels: ['sync-failed', 'needs-attention']
+            });

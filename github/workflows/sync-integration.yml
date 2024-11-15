@@ -1,0 +1,62 @@
+name: Sync Shared Directory
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'shared/**'
+      - '.github/workflows/**'  # 워크플로우 파일 변경 시에도 실행
+  pull_request:
+    types: [closed]
+    branches: [ main ]
+    paths:
+      - 'shared/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  fetch-and-sync:
+    runs-on: ubuntu-latest
+    # 권한 추가
+    permissions:
+      contents: write
+      pull-requests: write
+
+    strategy:
+      matrix:
+        team: [
+          {
+            name: 'right',
+            repo: 'KDT-PWA-1-Project-A-Team-Right'
+          },
+          {
+            name: 'left',
+            repo: 'KDT-PWA-1-Project-A-Team-Left'
+          }
+        ]
+      # 실패 시에도 계속 진행
+      fail-fast: false
+
+    steps:
+      # ... 기존 steps 유지 ...
+
+      # 동기화 결과 알림 추가
+      - name: Create sync summary
+        if: always()
+        run: |
+          echo "### 동기화 결과 - ${{ matrix.team.name }} 팀" >> $GITHUB_STEP_SUMMARY
+          echo "- 저장소: ${{ matrix.team.repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 상태: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      # 실패 시 이슈 생성
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `동기화 실패: ${{ matrix.team.repo }}`,
+              body: `### 동기화 실패 알림\n- 팀: ${{ matrix.team.name }}\n- 저장소: ${{ matrix.team.repo }}\n- 워크플로우: ${context.workflow}\n- 실행 ID: ${context.runId}`
+            });

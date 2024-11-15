@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'shared/**'
+      - '.github/workflows/**'
   pull_request:
     types: [closed]
     branches: [ main ]
@@ -13,8 +14,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  fetch-and-sync:
+  sync-shared:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
     strategy:
       matrix:
         team: [
@@ -27,50 +33,137 @@ jobs:
             repo: 'KDT-PWA-1-Project-A-Team-Left'
           }
         ]
+      fail-fast: false
+
     steps:
-      - name: Checkout center repository
+      - name: Checkout source repository
         uses: actions/checkout@v4
         with:
-          path: center-repo
+          fetch-depth: 0
+          path: source-repo
 
-      - name: Checkout team repository
+      - name: Checkout target repository
         uses: actions/checkout@v4
         with:
           repository: KDT-PWA-Class-One-Group/${{ matrix.team.repo }}
-          path: team-repo
           token: ${{ secrets.PAT_TOKEN }}
+          path: target-repo
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
 
       - name: Sync shared directory
         run: |
-          # 디렉토리 존재 확인
-          if [ ! -d "center-repo/shared" ]; then
-            echo "Error: shared directory not found in center repository"
-            exit 1
+          # shared 디렉토리 전체 동기화
+          rm -rf target-repo/shared
+          cp -r source-repo/shared target-repo/
+
+          # package.json 의존성 병합
+          if [ -f "target-repo/package.json" ]; then
+            node -e "
+              const sourcePackage = require('./source-repo/shared/package.json');
+              const targetPackage = require('./target-repo/package.json');
+
+              // devDependencies 병합
+              targetPackage.devDependencies = {
+                ...targetPackage.devDependencies,
+                ...sourcePackage.devDependencies
+              };
+
+              // scripts 병합
+              targetPackage.scripts = {
+                ...targetPackage.scripts,
+                ...sourcePackage.scripts
+              };
+
+              // engines 설정 업데이트
+              targetPackage.engines = sourcePackage.engines;
+
+              require('fs').writeFileSync(
+                './target-repo/package.json',
+                JSON.stringify(targetPackage, null, 2)
+              );
+            "
           fi
 
-          # 동기화 실행
-          rm -rf team-repo/shared
-          cp -r center-repo/shared team-repo/
-
-          # 복사 확인
-          if [ ! -d "team-repo/shared" ]; then
-            echo "Error: sync failed - shared directory not copied"
-            exit 1
+      - name: Check for changes
+        id: check-changes
+        working-directory: target-repo
+        run: |
+          git add .
+          git status --porcelain
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Configure Git
-        working-directory: team-repo
+        if: steps.check-changes.outputs.changes == 'true'
+        working-directory: target-repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit and push if changed
-        working-directory: team-repo
+      - name: Commit and push changes
+        if: steps.check-changes.outputs.changes == 'true'
+        working-directory: target-repo
         run: |
-          git add shared/
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
+          # 변경된 파일 목록 생성
+          CHANGED_FILES=$(git status --porcelain | awk '{print $2}')
+
+          # 커밋 메시지 생성
+          COMMIT_MSG="chore: sync shared configurations [skip ci]
+
+          동기화된 파일:
+          $(echo "$CHANGED_FILES" | sed 's/^/- /')
+
+          🔄 자동 동기화 완료
+          - 시간: $(date)
+          - 대상: ${{ matrix.team.repo }}
+
+          ⚠️ 주의사항:
+          1. yarn install 실행 필요
+          2. 충돌 발생 시 담당자에게 문의"
+
+          git commit -m "$COMMIT_MSG"
+          git push
+
+      - name: Create sync report
+        if: always()
+        run: |
+          echo "### 동기화 결과 - ${{ matrix.team.name }} 팀" >> $GITHUB_STEP_SUMMARY
+          echo "- 저장소: ${{ matrix.team.repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 상태: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.check-changes.outputs.changes }}" == "true" ]]; then
+            echo "- 변경사항: 있음" >> $GITHUB_STEP_SUMMARY
           else
-            git commit -m "chore: sync shared configurations [skip ci]"
-            git push
+            echo "- 변경사항: 없음" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `동기화 실패: ${{ matrix.team.repo }}`,
+              body: `### 동기화 실패 알림
+              - 팀: ${{ matrix.team.name }}
+              - 저장소: ${{ matrix.team.repo }}
+              - 워크플로우: ${context.workflow}
+              - 실행 ID: ${context.runId}
+
+              ### 문제 해결 단계
+              1. 워크플로우 로그 확인
+              2. 충돌 여부 확인
+              3. 수동 동기화 필요 여부 검토
+
+              cc: @team-leads`
+            });
