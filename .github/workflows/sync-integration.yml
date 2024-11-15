@@ -42,23 +42,20 @@ jobs:
 
       - name: Sync shared directory
         run: |
-          # 팀 저장소의 shared 디렉토리를 center로 복사
-          rm -rf center-repo/shared
-          cp -r team-repo/shared center-repo/
+          # Center의 shared를 팀 저장소로 복사
+          rm -rf team-repo/shared
+          cp -r center-repo/shared team-repo/
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.PAT_TOKEN }}
-          path: center-repo
-          commit-message: "chore: sync shared directory from ${{ matrix.team.name }} team"
-          title: "🔄 Sync shared directory from ${{ matrix.team.name }} team"
-          body: |
-            This PR syncs the shared directory from ${{ matrix.team.name }} team repository.
+      - name: Commit and push changes
+        working-directory: team-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-            Please review the changes carefully before merging.
-          branch: sync/shared-from-${{ matrix.team.name }}
-          base: main
-          labels: |
-            sync
-            automated
+          git add shared/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: sync shared directory from center repository [skip ci]"
+            git push
+          fi
