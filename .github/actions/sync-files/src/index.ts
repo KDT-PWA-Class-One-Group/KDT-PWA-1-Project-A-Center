@@ -24,15 +24,20 @@ async function compareChanges(sourceDir: string, tempDir: string): Promise<strin
 
 async function syncFiles(sourceDir: string, tempDir: string): Promise<void> {
   const filesToSync = [
-    'shared/**/*',
+    'shared',
     '.nvmrc',
     '.python-version',
     'README.md',
-    '.github/workflows/**/*'
+    '.github/workflows'
   ];
 
   for (const pattern of filesToSync) {
-    await exec.exec('cp', ['-r', pattern, tempDir]);
+    if (fs.existsSync(pattern)) {
+      core.info(`복사 중: ${pattern}`);
+      await exec.exec('cp', ['-r', pattern, tempDir]);
+    } else {
+      core.warning(`파일/디렉토리 없음: ${pattern}`);
+    }
   }
 
   // 버전 정보 로깅
