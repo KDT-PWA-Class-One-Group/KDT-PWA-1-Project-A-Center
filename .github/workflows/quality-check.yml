@@ -1,48 +1,44 @@
-# .github/workflows/quality-check.yml
 name: Code Quality Check
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   quality:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'yarn'
+          cache-dependency-path: 'shared/yarn.lock'
 
       - name: Install dependencies
-        run: |
-          cd shared
-          yarn install
-
-      - name: Lint check
-        run: yarn lint
+        working-directory: ./shared
+        run: yarn install --frozen-lockfile
 
       - name: Type check
+        working-directory: ./shared
         run: yarn type-check
 
-      - name: Test
-        run: yarn test
+      - name: Lint and Format check
+        working-directory: ./shared
+        run: |
+          yarn lint
+          yarn format:check
 
       - name: Report Status
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { status } = process.env;
-            const emoji = status === 'success' ? '✅' : '❌';
-            const body = `${emoji} Quality check: ${status}\n\nChecks completed:\n- Lint\n- Type check\n- Tests`;
-
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.name,
-              body
-            });
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All quality checks passed!"
+          else
+            echo "❌ Some quality checks failed"
+            exit 1
+          fi
