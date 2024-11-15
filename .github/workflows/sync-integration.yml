@@ -56,94 +56,152 @@ jobs:
           node-version: '20'
           cache: 'yarn'
 
+      - name: Compare directories
+        id: compare
+        run: |
+          echo "비교 시작: source-repo/shared vs target-repo/shared"
+
+          # 소스 디렉토리의 파일 목록 생성
+          cd source-repo/shared
+          SOURCE_FILES=$(find . -type f -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" | sort)
+          echo "소스 파일 목록:"
+          echo "$SOURCE_FILES"
+
+          # 대상 디렉토리의 파일 목록 생성
+          cd ../../target-repo
+          if [ -d "shared" ]; then
+            cd shared
+            TARGET_FILES=$(find . -type f -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" | sort)
+            echo "대상 파일 목록:"
+            echo "$TARGET_FILES"
+          else
+            TARGET_FILES=""
+            echo "대상 디렉토리가 없습니다."
+          fi
+
+          # 차이점 분석
+          DIFF_RESULT=$(diff <(echo "$SOURCE_FILES") <(echo "$TARGET_FILES") || true)
+          if [ ! -z "$DIFF_RESULT" ]; then
+            echo "differences=true" >> $GITHUB_OUTPUT
+            echo "차이점이 발견되었습니다:"
+            echo "$DIFF_RESULT"
+          else
+            echo "differences=false" >> $GITHUB_OUTPUT
+            echo "차이점이 없습니다."
+          fi
+
       - name: Sync shared directory
+        if: steps.compare.outputs.differences == 'true'
         run: |
           # shared 디렉토리 전체 동기화
+          echo "shared 디렉토리 동기화 시작..."
           rm -rf target-repo/shared
           cp -r source-repo/shared target-repo/
 
-          # package.json 의존성 병합
-          if [ -f "target-repo/package.json" ]; then
-            node -e "
-              const sourcePackage = require('./source-repo/shared/package.json');
-              const targetPackage = require('./target-repo/package.json');
+          # 파일 권한 설정
+          cd target-repo/shared
+          find . -type f -exec chmod 644 {} \;
+          find . -type d -exec chmod 755 {} \;
 
-              // devDependencies 병합
-              targetPackage.devDependencies = {
-                ...targetPackage.devDependencies,
-                ...sourcePackage.devDependencies
-              };
+          echo "동기화된 파일 목록:"
+          find . -type f -not -path "*/node_modules/*" -not -path "*/dist/*"
 
-              // scripts 병합
-              targetPackage.scripts = {
-                ...targetPackage.scripts,
-                ...sourcePackage.scripts
-              };
-
-              // engines 설정 업데이트
-              targetPackage.engines = sourcePackage.engines;
-
-              require('fs').writeFileSync(
-                './target-repo/package.json',
-                JSON.stringify(targetPackage, null, 2)
-              );
-            "
-          fi
-
-      - name: Check for changes
-        id: check-changes
-        working-directory: target-repo
+      - name: Verify configuration files
         run: |
-          git add .
-          git status --porcelain
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "changes=false" >> $GITHUB_OUTPUT
-          fi
+          cd target-repo
+
+          # 필수 설정 파일 확인
+          REQUIRED_FILES=(
+            "shared/.eslintrc.json"
+            "shared/.prettierrc"
+            "shared/tsconfig.json"
+            "shared/package.json"
+            "shared/.gitignore"
+          )
+
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file 존재"
+            else
+              echo "❌ $file 누락"
+              exit 1
+            fi
+          done
 
       - name: Configure Git
-        if: steps.check-changes.outputs.changes == 'true'
         working-directory: target-repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.changes == 'true'
+      - name: Create and switch to sync branch
         working-directory: target-repo
         run: |
-          # 변경된 파일 목록 생성
-          CHANGED_FILES=$(git status --porcelain | awk '{print $2}')
+          git checkout -b sync/shared-update
 
-          # 커밋 메시지 생성
-          COMMIT_MSG="chore: sync shared configurations [skip ci]
+      - name: Commit and push changes
+        working-directory: target-repo
+        run: |
+          git add shared/
 
-          동기화된 파일:
-          $(echo "$CHANGED_FILES" | sed 's/^/- /')
+          if git diff --cached --quiet; then
+            echo "변경사항이 없습니다."
+          else
+            # 변경된 파일 목록 생성
+            CHANGED_FILES=$(git diff --cached --name-only)
 
-          🔄 자동 동기화 완료
-          - 시간: $(date)
-          - 대상: ${{ matrix.team.repo }}
+            # 커밋 메시지 생성
+            COMMIT_MSG=$(cat << EOF
+            chore: shared 설정 파일 동기화
 
-          ⚠️ 주의사항:
-          1. yarn install 실행 필요
-          2. 충돌 발생 시 담당자에게 문의"
+            동기화된 파일:
+            $(echo "$CHANGED_FILES" | sed 's/^/- /')
 
-          git commit -m "$COMMIT_MSG"
-          git push
+            🔄 자동 동기화 완료
+            - 시간: $(date)
+            - 대상: ${{ matrix.team.repo }}
+            EOF
+            )
+
+            git commit -m "$COMMIT_MSG"
+            git push -f origin sync/shared-update
+
+            # PR 생성
+            gh pr create \
+              --title "chore: shared 설정 파일 동기화" \
+              --body "## 설정 파일 동기화
+
+              ### 변경된 파일
+              $(echo "$CHANGED_FILES" | sed 's/^/- /')
+
+              ### 주의사항
+              - [ ] package.json 변경사항 확인
+              - [ ] yarn install 실행 필요
+              - [ ] 설정 파일 충돌 여부 확인
+
+              자동으로 생성된 PR입니다. 리뷰 후 병합해주세요." \
+              --base main \
+              --head sync/shared-update
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Create sync report
         if: always()
         run: |
-          echo "### 동기화 결과 - ${{ matrix.team.name }} 팀" >> $GITHUB_STEP_SUMMARY
-          echo "- 저장소: ${{ matrix.team.repo }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 상태: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ steps.check-changes.outputs.changes }}" == "true" ]]; then
-            echo "- 변경사항: 있음" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- 변경사항: 없음" >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            echo "### 동기화 결과 - ${{ matrix.team.name }} 팀"
+            echo "- 저장소: ${{ matrix.team.repo }}"
+            echo "- 상태: ${{ job.status }}"
+            echo "- 브랜치: sync/shared-update"
+
+            if [ -n "$(git -C target-repo diff --cached --name-only)" ]; then
+              echo "- 변경된 파일:"
+              git -C target-repo diff --cached --name-only | sed 's/^/  - /'
+            else
+              echo "- 변경사항 없음"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
 
       - name: Create issue on failure
         if: failure()
@@ -162,7 +220,7 @@ jobs:
 
               ### 문제 해결 단계
               1. 워크플로우 로그 확인
-              2. 충돌 여부 확인
+              2. 설정 파일 충돌 확인
               3. 수동 동기화 필요 여부 검토
 
               cc: @team-leads`
