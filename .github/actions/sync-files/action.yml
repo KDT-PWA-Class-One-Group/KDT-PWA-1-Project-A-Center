@@ -1,4 +1,3 @@
-# .github/actions/sync-files/action.yml
 name: 'Sync Shared Files'
 description: 'Synchronize shared configuration files to team repositories'
 
@@ -15,4 +14,5 @@ inputs:
 
 runs:
   using: 'node20'
+  pre: 'yarn install --frozen-lockfile'  # 의존성 설치 단계 추가
   main: 'index.js'

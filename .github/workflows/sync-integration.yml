@@ -1,4 +1,3 @@
-# .github/workflows/sync-integration.yml
 name: Sync Project Setup
 
 on:
@@ -15,23 +14,40 @@ permissions:
   pull-requests: write
 
 jobs:
-  validate:
+  quality-check:    # validate job을 quality-check로 변경
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'yarn'
 
-      - name: Validate shared configurations
+      - name: Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache yarn dependencies
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Install dependencies
+        working-directory: ./shared
         run: |
-          cd shared
-          yarn install
-          yarn validate  # shared/scripts/validate.js 실행
+          yarn install --frozen-lockfile
+
+      - name: Run quality checks
+        working-directory: ./shared
+        run: |
+          yarn lint
+          yarn format:check
+          yarn type-check
 
   sync:
-    needs: validate
+    needs: quality-check    # 의존성 job 이름 변경
     runs-on: ubuntu-latest
     strategy:
       matrix:
