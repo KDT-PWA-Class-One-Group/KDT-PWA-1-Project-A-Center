@@ -3,10 +3,12 @@ import * as exec from '@actions/exec';
 import * as path from 'path';
 import * as fs from 'fs';
 
-async function backup(tempDir: string): Promise<void> {
-  const backupDir = `${tempDir}_backup_${Date.now()}`;
+async function backup(tempDir: string): Promise<string> {
+  const timestamp = Date.now();
+  const backupDir = `${tempDir}_backup_${timestamp}`;
   await exec.exec('cp', ['-r', tempDir, backupDir]);
   core.info(`백업 생성됨: ${backupDir}`);
+  return backupDir;
 }
 
 async function compareChanges(sourceDir: string, tempDir: string): Promise<string[]> {
@@ -23,143 +25,66 @@ async function compareChanges(sourceDir: string, tempDir: string): Promise<strin
 }
 
 async function syncFiles(sourceDir: string, tempDir: string): Promise<void> {
-  const configurationSets = {
-    node: [
-      '.nvmrc',
-      '.node-version',
-      'package.json',
-      'yarn.lock',
-      'package-lock.json',
-      '.npmrc',
-      '.yarnrc',
-      '.pnpmrc'
-    ],
-    python: [
-      '.python-version',
-      'requirements.txt',
-      'poetry.lock',
-      'pyproject.toml',
-      'Pipfile',
-      'Pipfile.lock'
-    ],
-    typescript: [
-      'tsconfig.json',
-      'tsconfig.*.json'
-    ],
-    linters: [
-      '.eslintrc.js',
-      '.eslintrc.json',
-      '.eslintrc.yml',
-      '.prettierrc',
-      '.prettierrc.js',
-      '.prettierrc.json',
-      '.stylelintrc'
-    ],
-    bundlers: [
-      'vite.config.ts',
-      'vite.config.js',
-      'webpack.config.js',
-      'next.config.js',
-      'next.config.mjs',
-      'rollup.config.js'
-    ],
-    testing: [
-      'jest.config.js',
-      'jest.config.ts',
-      'vitest.config.ts',
-      'cypress.config.ts'
-    ],
-    docker: [
-      'Dockerfile',
-      'docker-compose.yml',
-      'docker-compose.*.yml'
-    ],
-    shared: [
-      'shared/**/*'
-    ],
-    github: [
-      '.github/workflows/**/*',
-      '.github/ISSUE_TEMPLATE/**/*',
-      '.github/PULL_REQUEST_TEMPLATE.md'
-    ]
-  };
+  core.info(`동기화 시작: ${tempDir} -> ${sourceDir}`);
 
-  // 버전 검증 함수
-  async function validateVersions(): Promise<void> {
-    const versions: Record<string, string> = {};
+  // shared 디렉토리만 동기화
+  const sharedDir = 'shared';
+  const sourcePath = path.join(tempDir, sharedDir);
+  const targetPath = path.join(sourceDir, sharedDir);
 
-    // Node.js 버전 확인
-    if (fs.existsSync('.nvmrc')) {
-      versions.node = fs.readFileSync('.nvmrc', 'utf8').trim();
+  if (fs.existsSync(sourcePath)) {
+    core.info(`${sharedDir} 디렉토리 동기화 중...`);
+    // 기존 디렉토리 제거 후 복사
+    if (fs.existsSync(targetPath)) {
+      await exec.exec('rm', ['-rf', targetPath]);
     }
+    await exec.exec('cp', ['-r', sourcePath, targetPath]);
+    core.info(`${sharedDir} 동기화 완료`);
+  } else {
+    core.warning(`${sharedDir} 디렉토리가 존재하지 않음`);
+  }
+}
 
-    // Python 버전 확인
-    if (fs.existsSync('.python-version')) {
-      versions.python = fs.readFileSync('.python-version', 'utf8').trim();
-    }
+async function validateScripts(tempDir: string): Promise<void> {
+  const pkgJsonPath = path.join(tempDir, 'package.json');
+  if (fs.existsSync(pkgJsonPath)) {
+    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+    if (!pkgJson.scripts) pkgJson.scripts = {};
 
-    // Package.json 엔진 버전 확인
-    if (fs.existsSync('package.json')) {
-      const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-      if (pkg.engines) {
-        versions.engines = JSON.stringify(pkg.engines);
+    // 필수 스크립트 확인 및 추가
+    const requiredScripts = {
+      'check-all': 'yarn lint && yarn type-check',
+      'lint': 'eslint . --ext .ts,.tsx',
+      'type-check': 'tsc --noEmit'
+    };
+
+    let modified = false;
+    for (const [script, command] of Object.entries(requiredScripts)) {
+      if (!pkgJson.scripts[script]) {
+        pkgJson.scripts[script] = command;
+        modified = true;
       }
     }
 
-    core.info('검증된 버전 정보:');
-    Object.entries(versions).forEach(([key, value]) => {
-      core.info(`${key}: ${value}`);
-    });
-  }
-
-  // 각 설정 세트별 동기화 수행
-  for (const [setName, patterns] of Object.entries(configurationSets)) {
-    core.info(`${setName} 설정 동기화 시작...`);
-
-    for (const pattern of patterns) {
-      const sourcePath = path.join(sourceDir, pattern);
-      const targetPath = path.join(tempDir, pattern);
-
-      if (fs.existsSync(sourcePath)) {
-        core.info(`${pattern} 파일 동기화 중...`);
-        await exec.exec('cp', ['-r', sourcePath, targetPath]);
-        core.info(`${pattern} 동기화 완료`);
-      } else {
-        core.debug(`${pattern} 파일이 존재하지 않음`);
-      }
+    if (modified) {
+      fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
+      core.info('package.json 스크립트가 업데이트되었습니다.');
     }
   }
-
-  // 의존성 설치 및 검증
-  async function validateDependencies(): Promise<void> {
-    if (fs.existsSync(path.join(tempDir, 'package.json'))) {
-      core.info('Node.js 의존성 검증 중...');
-      await exec.exec('yarn', ['install', '--frozen-lockfile']);
-      await exec.exec('yarn', ['check-all']);
-    }
-
-    if (fs.existsSync(path.join(tempDir, 'requirements.txt'))) {
-      core.info('Python 의존성 검증 중...');
-      await exec.exec('pip', ['install', '-r', 'requirements.txt']);
-    }
-  }
-
-  // 버전 및 의존성 검증 실행
-  await validateVersions();
-  await validateDependencies();
 }
 
 async function run(): Promise<void> {
   const startTime = Date.now();
+  let backupDir: string | null = null;
   let backupCreated = false;
+  const tempDir = path.join(process.env.GITHUB_WORKSPACE || '', 'temp', core.getInput('target-repo', { required: true }));
 
   try {
-    const targetRepo = core.getInput('target-repo', { required: true });
     const sourceDir = core.getInput('source-dir', { required: true });
     const token = core.getInput('pat-token', { required: true });
+    const targetRepo = core.getInput('target-repo', { required: true });
 
     const repoUrl = `https://x-access-token:${token}@github.com/KDT-PWA-Class-One-Group/${targetRepo}.git`;
-    const tempDir = path.join(process.env.GITHUB_WORKSPACE || '', 'temp', targetRepo);
 
     core.info(`동기화 시작: ${sourceDir} -> ${targetRepo}`);
     core.info(`시작 시간: ${new Date(startTime).toISOString()}`);
@@ -168,7 +93,7 @@ async function run(): Promise<void> {
     await exec.exec('git', ['clone', repoUrl, tempDir]);
 
     // 백업 생성
-    await backup(tempDir);
+    backupDir = await backup(tempDir);
     backupCreated = true;
 
     // 변경사항 미리보기
@@ -230,10 +155,8 @@ async function run(): Promise<void> {
 
   } catch (error) {
     // 에러 발생 시 롤백
-    if (backupCreated) {
+    if (backupCreated && backupDir) {
       try {
-        const tempDir = path.join(process.env.GITHUB_WORKSPACE || '', 'temp', core.getInput('target-repo'));
-        const backupDir = `${tempDir}_backup_${startTime}`;
         await exec.exec('rm', ['-rf', tempDir]);
         await exec.exec('mv', [backupDir, tempDir]);
         core.info('백업에서 성공적으로 복구되었습니다.');
