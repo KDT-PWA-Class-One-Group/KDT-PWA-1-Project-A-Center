@@ -19,6 +19,8 @@ permissions:
 jobs:
   quality-check:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,6 +39,8 @@ jobs:
   sync:
     needs: quality-check
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
     strategy:
       matrix:
         team: [
@@ -94,12 +98,11 @@ jobs:
 
       - name: Create Pull Request
         id: create-pr
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PAT_TOKEN }}
           path: target-repo
           commit-message: "chore: sync shared configurations"
-          node-version: '20'
           title: "🔄 Sync shared configurations for ${{ matrix.team.name }} team"
           body: |
             This PR syncs the latest shared configurations from the main repository.
