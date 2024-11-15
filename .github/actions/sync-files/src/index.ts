@@ -22,6 +22,31 @@ async function compareChanges(sourceDir: string, tempDir: string): Promise<strin
   return changes;
 }
 
+async function syncFiles(sourceDir: string, tempDir: string): Promise<void> {
+  const filesToSync = [
+    'shared/**/*',
+    '.nvmrc',
+    '.python-version',
+    'README.md',
+    '.github/workflows/**/*'
+  ];
+
+  for (const pattern of filesToSync) {
+    await exec.exec('cp', ['-r', pattern, tempDir]);
+  }
+
+  // 버전 정보 로깅
+  if (fs.existsSync(path.join(tempDir, '.nvmrc'))) {
+    const nodeVersion = fs.readFileSync(path.join(tempDir, '.nvmrc'), 'utf8');
+    core.info(`Node.js version: ${nodeVersion.trim()}`);
+  }
+
+  if (fs.existsSync(path.join(tempDir, '.python-version'))) {
+    const pythonVersion = fs.readFileSync(path.join(tempDir, '.python-version'), 'utf8');
+    core.info(`Python version: ${pythonVersion.trim()}`);
+  }
+}
+
 async function run(): Promise<void> {
   const startTime = Date.now();
   let backupCreated = false;
@@ -49,8 +74,8 @@ async function run(): Promise<void> {
     core.info('예상되는 변경사항:');
     beforeChanges.forEach(change => core.info(`  ${change}`));
 
-    // 공유 파일 복사
-    await exec.exec('cp', ['-r', `${sourceDir}/.`, tempDir]);
+    // 파일 동기화 함수 호출
+    await syncFiles(sourceDir, tempDir);
 
     // Git 설정
     process.chdir(tempDir);
