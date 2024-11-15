@@ -77,11 +77,18 @@ jobs:
           source-dir: 'shared'
           pat-token: ${{ secrets.PAT_TOKEN }}
 
+      - name: Checkout target repository
+        run: |
+          git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/${{ matrix.team.repo }}.git target-repo
+          cd target-repo
+          git checkout -b sync/shared-configs-${{ matrix.team.name }}
+
       - name: Create Pull Request
         id: create-pr
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.PAT_TOKEN }}
+          path: target-repo
           commit-message: "chore: sync shared configurations"
           title: "🔄 Sync shared configurations for ${{ matrix.team.name }} team"
           body: |
