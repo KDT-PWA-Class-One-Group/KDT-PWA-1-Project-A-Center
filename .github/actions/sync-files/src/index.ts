@@ -23,33 +23,130 @@ async function compareChanges(sourceDir: string, tempDir: string): Promise<strin
 }
 
 async function syncFiles(sourceDir: string, tempDir: string): Promise<void> {
-  const filesToSync = [
-    'shared',
-    '.nvmrc',
-    '.python-version',
-    'README.md',
-    '.github/workflows'
-  ];
+  const configurationSets = {
+    node: [
+      '.nvmrc',
+      '.node-version',
+      'package.json',
+      'yarn.lock',
+      'package-lock.json',
+      '.npmrc',
+      '.yarnrc',
+      '.pnpmrc'
+    ],
+    python: [
+      '.python-version',
+      'requirements.txt',
+      'poetry.lock',
+      'pyproject.toml',
+      'Pipfile',
+      'Pipfile.lock'
+    ],
+    typescript: [
+      'tsconfig.json',
+      'tsconfig.*.json'
+    ],
+    linters: [
+      '.eslintrc.js',
+      '.eslintrc.json',
+      '.eslintrc.yml',
+      '.prettierrc',
+      '.prettierrc.js',
+      '.prettierrc.json',
+      '.stylelintrc'
+    ],
+    bundlers: [
+      'vite.config.ts',
+      'vite.config.js',
+      'webpack.config.js',
+      'next.config.js',
+      'next.config.mjs',
+      'rollup.config.js'
+    ],
+    testing: [
+      'jest.config.js',
+      'jest.config.ts',
+      'vitest.config.ts',
+      'cypress.config.ts'
+    ],
+    docker: [
+      'Dockerfile',
+      'docker-compose.yml',
+      'docker-compose.*.yml'
+    ],
+    shared: [
+      'shared/**/*'
+    ],
+    github: [
+      '.github/workflows/**/*',
+      '.github/ISSUE_TEMPLATE/**/*',
+      '.github/PULL_REQUEST_TEMPLATE.md'
+    ]
+  };
 
-  for (const pattern of filesToSync) {
-    if (fs.existsSync(pattern)) {
-      core.info(`복사 중: ${pattern}`);
-      await exec.exec('cp', ['-r', pattern, tempDir]);
-    } else {
-      core.warning(`파일/디렉토리 없음: ${pattern}`);
+  // 버전 검증 함수
+  async function validateVersions(): Promise<void> {
+    const versions: Record<string, string> = {};
+
+    // Node.js 버전 확인
+    if (fs.existsSync('.nvmrc')) {
+      versions.node = fs.readFileSync('.nvmrc', 'utf8').trim();
+    }
+
+    // Python 버전 확인
+    if (fs.existsSync('.python-version')) {
+      versions.python = fs.readFileSync('.python-version', 'utf8').trim();
+    }
+
+    // Package.json 엔진 버전 확인
+    if (fs.existsSync('package.json')) {
+      const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+      if (pkg.engines) {
+        versions.engines = JSON.stringify(pkg.engines);
+      }
+    }
+
+    core.info('검증된 버전 정보:');
+    Object.entries(versions).forEach(([key, value]) => {
+      core.info(`${key}: ${value}`);
+    });
+  }
+
+  // 각 설정 세트별 동기화 수행
+  for (const [setName, patterns] of Object.entries(configurationSets)) {
+    core.info(`${setName} 설정 동기화 시작...`);
+
+    for (const pattern of patterns) {
+      const sourcePath = path.join(sourceDir, pattern);
+      const targetPath = path.join(tempDir, pattern);
+
+      if (fs.existsSync(sourcePath)) {
+        core.info(`${pattern} 파일 동기화 중...`);
+        await exec.exec('cp', ['-r', sourcePath, targetPath]);
+        core.info(`${pattern} 동기화 완료`);
+      } else {
+        core.debug(`${pattern} 파일이 존재하지 않음`);
+      }
     }
   }
 
-  // 버전 정보 로깅
-  if (fs.existsSync(path.join(tempDir, '.nvmrc'))) {
-    const nodeVersion = fs.readFileSync(path.join(tempDir, '.nvmrc'), 'utf8');
-    core.info(`Node.js version: ${nodeVersion.trim()}`);
+  // 의존성 설치 및 검증
+  async function validateDependencies(): Promise<void> {
+    if (fs.existsSync(path.join(tempDir, 'package.json'))) {
+      core.info('Node.js 의존성 검증 중...');
+      await exec.exec('yarn', ['install', '--frozen-lockfile']);
+      await exec.exec('yarn', ['check-all']);
+    }
+
+    if (fs.existsSync(path.join(tempDir, 'requirements.txt'))) {
+      core.info('Python 의존성 검증 중...');
+      await exec.exec('pip', ['install', '-r', 'requirements.txt']);
+    }
   }
 
-  if (fs.existsSync(path.join(tempDir, '.python-version'))) {
-    const pythonVersion = fs.readFileSync(path.join(tempDir, '.python-version'), 'utf8');
-    core.info(`Python version: ${pythonVersion.trim()}`);
-  }
+  // 버전 및 의존성 검증 실행
+  await validateVersions();
+  await validateDependencies();
 }
 
 async function run(): Promise<void> {
