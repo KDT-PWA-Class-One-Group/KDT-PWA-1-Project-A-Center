@@ -54,7 +54,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'yarn'
+
+      - name: Initialize yarn
+        run: |
+          cd source-repo/shared
+          echo "Creating yarn.lock file..."
+          yarn install --frozen-lockfile || yarn install
 
       - name: Compare directories
         id: compare
@@ -97,6 +102,12 @@ jobs:
           echo "shared 디렉토리 동기화 시작..."
           rm -rf target-repo/shared
           cp -r source-repo/shared target-repo/
+
+          # yarn.lock 파일 복사 확인
+          if [ -f "source-repo/shared/yarn.lock" ]; then
+            cp source-repo/shared/yarn.lock target-repo/shared/
+            echo "yarn.lock 파일이 복사되었습니다."
+          fi
 
           # 파일 권한 설정
           cd target-repo/shared
