@@ -1,0 +1,67 @@
+name: Sync TypeScript Setup
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'shared/**'
+      - '.github/workflows/sync-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync-typescript:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Sync to Right Team Repository
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+        run: |
+          # Clone the right team repository
+          git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Right.git right-repo
+
+          # Copy package files, TypeScript config, and gitignore
+          cp shared/package.json right-repo/
+          cp shared/yarn.lock right-repo/
+          cp shared/tsconfig.json right-repo/
+          cp shared/.gitignore right-repo/
+
+          # Commit and push changes
+          cd right-repo
+          git add package.json yarn.lock tsconfig.json .gitignore
+          git commit -m "chore: sync TypeScript setup and gitignore from main repository [skip ci]" || echo "No changes to commit"
+          git push
+          cd ..
+
+      - name: Sync to Left Team Repository
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+        run: |
+          # Clone the left team repository
+          git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/KDT-PWA-Class-One-Group/KDT-PWA-1-Project-A-Team-Left.git left-repo
+
+          # Copy package files, TypeScript config, and gitignore
+          cp shared/package.json left-repo/
+          cp shared/yarn.lock left-repo/
+          cp shared/tsconfig.json left-repo/
+          cp shared/.gitignore left-repo/
+
+          # Commit and push changes
+          cd left-repo
+          git add package.json yarn.lock tsconfig.json .gitignore
+          git commit -m "chore: sync TypeScript setup and gitignore from main repository [skip ci]" || echo "No changes to commit"
+          git push
+          cd ..
