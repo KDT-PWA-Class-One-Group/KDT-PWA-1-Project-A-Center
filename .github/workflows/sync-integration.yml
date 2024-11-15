@@ -53,6 +53,18 @@ jobs:
         with:
           token: ${{ secrets.PAT_TOKEN }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Build sync-files action
+        run: |
+          cd .github/actions/sync-files
+          yarn install
+          yarn build
+
       - name: Sync team repository
         uses: ./.github/actions/sync-files
         with:
