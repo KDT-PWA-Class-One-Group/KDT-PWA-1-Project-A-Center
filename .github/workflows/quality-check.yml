@@ -36,12 +36,18 @@ jobs:
           yarn install --frozen-lockfile
           yarn cache list
 
-      - name: Run quality checks
+      # validate 스크립트 대신 각각의 검사를 직접 실행
+      - name: Run Lint
         working-directory: ./shared
-        run: |
-          yarn lint
-          yarn format:check
-          yarn type-check
+        run: yarn lint
+
+      - name: Run Format Check
+        working-directory: ./shared
+        run: yarn format:check
+
+      - name: Run Type Check
+        working-directory: ./shared
+        run: yarn type-check
 
       - name: Report Status
         if: always()
