@@ -220,3 +220,114 @@ hotfix/* ───────────────────────�
 
 3. 원격 저장소에 푸시
    git push origin hotfix/버그수정명
+
+---
+
+# 만약 코드를 작성한다면 다음 순서를 따름
+
+```bash
+# 1-1. develop 브랜치 최신화
+git checkout develop
+git pull origin develop
+
+# 1-2. 새로운 feature 브랜치 생성
+git checkout -b feature/button-component
+```
+
+2. 코드 작성 및 품질 검사
+
+```bash
+# 2-1. 의존성 설치
+yarn install
+
+# 2-2. 코드 작성 후 품질 검사
+yarn type-check  # 타입스크립트 검사
+yarn lint       # 린트 검사
+yarn format:check  # 포맷 검사
+```
+
+3. 커밋 준비
+
+```bash
+# 3-1. 변경사항 확인
+git status
+git diff
+
+# 3-2. 스테이징
+git add .  # 또는 특정 파일만: git add src/components/Button
+```
+
+4. 커밋 메시지 작성
+
+```bash
+git commit -m "feat: Button 컴포넌트 구현
+
+- 기본 버튼 컴포넌트 구현
+- 크기 variants 추가 (sm, md, lg)
+- 색상 테마 지원
+- 테스트 코드 추가
+
+관련 이슈: #123"
+```
+
+5. 원격 저장소 푸시
+
+```bash
+git push origin feature/button-component
+```
+
+6. Pull Request 생성
+1. GitHub 저장소 페이지에서 'Pull Request' 버튼 클릭
+2. PR 템플릿에 따라 내용 작성:
+   ```markdown
+   ### 변경 사항
+   - Button 컴포넌트 구현
+   - 테스트 코드 추가
+
+   ### 테스트 결과
+   - 단위 테스트 완료
+   - 린트 검사 통과
+
+   ### 관련 이슈
+   - Closes #123
+
+   ### 리뷰어 체크리스트
+   - [x] CODEOWNERS 규칙에 따른 리뷰어 자동 지정 확인
+   - [x] 코드 품질 검사 통과
+   - [x] 테스트 코드 작성
+   ```
+
+7. 리뷰 프로세스
+1. 지정된 리뷰어의 승인 대기
+2. 리뷰어의 피드백이 있는 경우:
+   ```bash
+   # 7-1. 수정사항 반영
+   git add .
+   git commit -m "refactor: 리뷰 피드백 반영"
+   git push origin feature/button-component
+   ```
+
+8. CI/CD 확인
+1. GitHub Actions 탭에서 다음 항목 확인:
+   - 품질 검사 통과 여부
+   - 브랜치 네이밍 규칙 준수 여부
+   - 테스트 통과 여부
+
+9. 병합 완료 후
+
+```bash
+# 9-1. develop 브랜치로 전환
+git checkout develop
+
+# 9-2. 최신 코드 가져오기
+git pull origin develop
+
+# 9-3. 작업 브랜치 삭제
+git branch -d feature/button-component
+```
+
+### 주의사항
+- 공유 설정 파일(shared/ 디렉토리)은 수정하지 않습니다.
+- 커밋 메시지는 컨벤션을 준수합니다.
+- PR 생성 전 모든 테스트가 통과되었는지 확인합니다.
+- 리뷰어의 승인 없이는 병합하지 않습니다.
