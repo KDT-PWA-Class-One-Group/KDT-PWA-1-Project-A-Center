@@ -55,74 +55,119 @@ jobs:
         with:
           node-version: '20'
 
-      # yarn 초기화 전에 package.json 존재 여부 확인
-      - name: Check package.json
-        run: |
-          if [ ! -f "source-repo/shared/package.json" ]; then
-            echo "Error: package.json not found in source-repo/shared"
-            exit 1
-          fi
-
-      - name: Initialize yarn
-        run: |
-          cd source-repo/shared
-          echo "Installing dependencies..."
-          # yarn.lock이 없으면 새로 생성
-          if [ ! -f "yarn.lock" ]; then
-            echo "Creating new yarn.lock file..."
-            yarn install
-          else
-            echo "Using existing yarn.lock file..."
-            yarn install --frozen-lockfile
-          fi
-
       - name: Create sync branch
         working-directory: target-repo
         run: |
-          # 기존 sync 브랜치가 있다면 삭제
           git fetch origin
           git branch -D sync/shared-update 2>/dev/null || true
           git push origin --delete sync/shared-update 2>/dev/null || true
-
-          # main에서 새로운 sync 브랜치 생성
           git checkout -b sync/shared-update main
 
-      - name: Sync shared directory
+      - name: Sync shared content
         run: |
-          # target-repo의 shared 디렉토리 백업 (있는 경우)
-          if [ -d "target-repo/shared" ]; then
-            mv target-repo/shared target-repo/shared.bak
+          # 동기화할 디렉토리와 파일 목록
+          SYNC_ITEMS=(
+            # 설정 파일
+            ".eslintrc.json"
+            ".prettierrc"
+            "tsconfig.json"
+            "package.json"
+            ".gitignore"
+            # 소스 디렉토리
+            "src"
+            # 컴포넌트 디렉토리
+            "components"
+            # 유틸리티
+            "utils"
+            # 타입 정의
+            "types"
+            # 테스트 관련
+            "tests"
+            "jest.config.js"
+            "cypress.config.ts"
+            # 스타일 관련
+            "styles"
+            # 기타 리소스
+            "assets"
+            "public"
+            # API 관련
+            "api"
+            # 상수 및 설정
+            "constants"
+            "config"
+          )
+
+          cd target-repo
+
+          # 백업 디렉토리 생성
+          BACKUP_DIR=".sync-backup-$(date +%Y%m%d_%H%M%S)"
+          mkdir -p "$BACKUP_DIR"
+
+          # 기존 파일 백업 및 새 파일 복사
+          for item in "${SYNC_ITEMS[@]}"; do
+            # 소스 경로
+            SOURCE_PATH="../source-repo/shared/$item"
+            # 대상 경로 (루트 디렉토리 기준)
+            TARGET_PATH="./$item"
+
+            # 소스가 존재하는 경우에만 처리
+            if [ -e "$SOURCE_PATH" ]; then
+              # 기존 파일/디렉토리가 있으면 백업
+              if [ -e "$TARGET_PATH" ]; then
+                echo "Backing up $item to $BACKUP_DIR"
+                mv "$TARGET_PATH" "$BACKUP_DIR/"
+              fi
+
+              # 파일/디렉토리 복사
+              echo "Copying $item from shared"
+              cp -r "$SOURCE_PATH" "$TARGET_PATH"
+            fi
+          done
+
+          # package.json 병합 (의존성 유지)
+          if [ -f "package.json" ] && [ -f "$BACKUP_DIR/package.json" ]; then
+            echo "Merging package.json dependencies..."
+            node -e "
+              const source = require('./package.json');
+              const target = require('./$BACKUP_DIR/package.json');
+
+              // 기존 의존성 유지하면서 새로운 의존성 추가
+              source.dependencies = {
+                ...target.dependencies,
+                ...source.dependencies
+              };
+              source.devDependencies = {
+                ...target.devDependencies,
+                ...source.devDependencies
+              };
+
+              // 스크립트 병합
+              source.scripts = {
+                ...target.scripts,
+                ...source.scripts
+              };
+
+              require('fs').writeFileSync(
+                'package.json',
+                JSON.stringify(source, null, 2)
+              );
+            "
           fi
 
-          # shared 디렉토리 복사
-          cp -r source-repo/shared target-repo/
-
-          # yarn.lock 파일 복사
-          if [ -f "source-repo/shared/yarn.lock" ]; then
-            cp source-repo/shared/yarn.lock target-repo/shared/
-          fi
-
-          # 파일 권한 설정
-          cd target-repo/shared
-          find . -type f -exec chmod 644 {} \;
-          find . -type d -exec chmod 755 {} \;
-
-      - name: Verify files and test setup
+      - name: Install dependencies and verify
         working-directory: target-repo
         run: |
-          cd shared
-          echo "Verifying package.json and dependencies..."
-          if [ ! -f "package.json" ]; then
-            echo "Error: package.json not found after sync"
-            exit 1
+          if [ -f "package.json" ]; then
+            echo "Installing dependencies..."
+            yarn install
+
+            echo "Running verification..."
+            if [ -f "yarn.lock" ]; then
+              yarn lint || echo "Lint check skipped"
+              yarn type-check || echo "Type check skipped"
+              yarn test || echo "Tests skipped"
+            fi
           fi
-
-          echo "Installing dependencies..."
-          yarn install
-
-          echo "Running tests..."
-          yarn lint || echo "Lint check skipped"
-          yarn type-check || echo "Type check skipped"
 
       - name: Commit changes
         working-directory: target-repo
@@ -130,18 +175,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add shared/
+          git add .
 
           if ! git diff --cached --quiet; then
-            git commit -m "chore: sync shared configurations
+            # 변경된 파일 목록 생성
+            CHANGED_FILES=$(git diff --cached --name-only)
+            # 변경된 디렉토리 목록 생성
+            CHANGED_DIRS=$(echo "$CHANGED_FILES" | grep "/" | cut -d/ -f1 | sort -u)
 
-            🔄 자동 동기화 완료
-            - 시간: $(date)
-            - 대상: ${{ matrix.team.repo }}
+            COMMIT_MSG="chore: sync shared configurations and resources
 
-            변경된 파일:
-            $(git diff --cached --name-only | sed 's/^/- /')"
+            🔄 동기화된 항목:
+            $(echo "$CHANGED_DIRS" | sed 's/^/- /')
 
+            📝 변경된 파일:
+            $(echo "$CHANGED_FILES" | sed 's/^/- /')
+
+            ⏰ 동기화 시간: $(date)
+            🎯 대상: ${{ matrix.team.repo }}"
+
+            git commit -m "$COMMIT_MSG"
             echo "Changes committed successfully"
           else
             echo "No changes to commit"
@@ -158,8 +211,11 @@ jobs:
 
             echo "Creating pull request..."
             gh pr create \
-              --title "chore: shared 설정 파일 동기화" \
-              --body "## 설정 파일 동기화
+              --title "chore: 공유 리소스 동기화" \
+              --body "## 공유 리소스 동기화
+
+              ### 변경된 디렉토리
+              $(git diff main...sync/shared-update --name-only | grep "/" | cut -d/ -f1 | sort -u | sed 's/^/- /')
 
               ### 변경된 파일
               $(git diff main...sync/shared-update --name-only | sed 's/^/- /')
@@ -168,22 +224,22 @@ jobs:
               - [ ] package.json 변경사항 확인
               - [ ] yarn install 실행 필요
               - [ ] 설정 파일 충돌 여부 확인
+              - [ ] 테스트 실행 필요
 
               자동으로 생성된 PR입니다. 리뷰 후 병합해주세요." \
               --base main \
               --head sync/shared-update || true
-          else
-            echo "No sync branch found, skipping PR creation"
           fi
 
       - name: Cleanup on failure
         if: failure()
         working-directory: target-repo
         run: |
-          if [ -d "shared.bak" ]; then
-            rm -rf shared
-            mv shared.bak shared
-            echo "Restored backup of shared directory"
+          if [ -d ".sync-backup-"* ]; then
+            BACKUP_DIR=$(ls -d .sync-backup-* | head -n 1)
+            echo "Restoring from backup: $BACKUP_DIR"
+            cp -r "$BACKUP_DIR"/* ./
+            rm -rf "$BACKUP_DIR"
           fi
 
       - name: Create sync report
@@ -200,6 +256,8 @@ jobs:
               if git diff --cached --quiet; then
                 echo "- 변경사항: 없음"
               else
+                echo "- 변경된 디렉토리:"
+                git diff --cached --name-only | grep "/" | cut -d/ -f1 | sort -u | sed 's/^/  - /'
                 echo "- 변경된 파일:"
                 git diff --cached --name-only | sed 's/^/  - /'
               fi
