@@ -57,16 +57,22 @@ async function run(): Promise<void> {
     await exec.exec('git', ['config', 'user.name', 'github-actions[bot]']);
     await exec.exec('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com']);
 
+    // yarn.lock 파일이 있는지 확인하고 설치 실행
+    if (fs.existsSync(path.join(tempDir, 'yarn.lock'))) {
+      await exec.exec('yarn', ['install', '--frozen-lockfile'], { cwd: tempDir });
+    }
+
     // 변경사항 커밋 및 푸시
     await exec.exec('git', ['add', '.']);
-
     const changes = await compareChanges(sourceDir, tempDir);
     if (changes.length > 0) {
       const commitMessage = [
         'chore: sync shared configurations [skip ci]',
         '',
         '변경된 파일:',
-        ...changes.map(c => `- ${c}`)
+        ...changes.map(c => `- ${c}`),
+        '',
+        '패키지 변경사항이 있는 경우 yarn install을 실행해주세요.'
       ].join('\n');
 
       await exec.exec('git', ['commit', '-m', commitMessage]);

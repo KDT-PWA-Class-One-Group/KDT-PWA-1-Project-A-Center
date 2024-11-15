@@ -21,30 +21,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
-
-      - name: Cache yarn dependencies
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
+          cache: 'yarn'  # yarn 캐시 설정 추가
 
       - name: Install dependencies
         working-directory: ./shared
-        run: |
-          yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile
 
       - name: Run quality checks
         working-directory: ./shared
         run: |
-          yarn lint
-          yarn format:check
-          yarn type-check
+          yarn check-all  # lint, format:check, type-check를 한번에 실행
 
   sync:
     needs: quality-check    # 의존성 job 이름 변경
