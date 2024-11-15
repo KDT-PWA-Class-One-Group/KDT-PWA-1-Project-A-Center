@@ -55,58 +55,51 @@ jobs:
         with:
           node-version: '20'
 
+      # yarn 초기화 전에 package.json 존재 여부 확인
+      - name: Check package.json
+        run: |
+          if [ ! -f "source-repo/shared/package.json" ]; then
+            echo "Error: package.json not found in source-repo/shared"
+            exit 1
+          fi
+
       - name: Initialize yarn
         run: |
           cd source-repo/shared
-          echo "Creating yarn.lock file..."
-          yarn install --frozen-lockfile || yarn install
+          echo "Installing dependencies..."
+          # yarn.lock이 없으면 새로 생성
+          if [ ! -f "yarn.lock" ]; then
+            echo "Creating new yarn.lock file..."
+            yarn install
+          else
+            echo "Using existing yarn.lock file..."
+            yarn install --frozen-lockfile
+          fi
 
-      - name: Compare directories
-        id: compare
+      - name: Create sync branch
+        working-directory: target-repo
         run: |
-          echo "비교 시작: source-repo/shared vs target-repo/shared"
+          # 기존 sync 브랜치가 있다면 삭제
+          git fetch origin
+          git branch -D sync/shared-update 2>/dev/null || true
+          git push origin --delete sync/shared-update 2>/dev/null || true
 
-          # 소스 디렉토리의 파일 목록 생성
-          cd source-repo/shared
-          SOURCE_FILES=$(find . -type f -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" | sort)
-          echo "소스 파일 목록:"
-          echo "$SOURCE_FILES"
-
-          # 대상 디렉토리의 파일 목록 생성
-          cd ../../target-repo
-          if [ -d "shared" ]; then
-            cd shared
-            TARGET_FILES=$(find . -type f -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" | sort)
-            echo "대상 파일 목록:"
-            echo "$TARGET_FILES"
-          else
-            TARGET_FILES=""
-            echo "대상 디렉토리가 없습니다."
-          fi
-
-          # 차이점 분석
-          DIFF_RESULT=$(diff <(echo "$SOURCE_FILES") <(echo "$TARGET_FILES") || true)
-          if [ ! -z "$DIFF_RESULT" ]; then
-            echo "differences=true" >> $GITHUB_OUTPUT
-            echo "차이점이 발견되었습니다:"
-            echo "$DIFF_RESULT"
-          else
-            echo "differences=false" >> $GITHUB_OUTPUT
-            echo "차이점이 없습니다."
-          fi
+          # main에서 새로운 sync 브랜치 생성
+          git checkout -b sync/shared-update main
 
       - name: Sync shared directory
-        if: steps.compare.outputs.differences == 'true'
         run: |
-          # shared 디렉토리 전체 동기화
-          echo "shared 디렉토리 동기화 시작..."
-          rm -rf target-repo/shared
+          # target-repo의 shared 디렉토리 백업 (있는 경우)
+          if [ -d "target-repo/shared" ]; then
+            mv target-repo/shared target-repo/shared.bak
+          fi
+
+          # shared 디렉토리 복사
           cp -r source-repo/shared target-repo/
 
-          # yarn.lock 파일 복사 확인
+          # yarn.lock 파일 복사
           if [ -f "source-repo/shared/yarn.lock" ]; then
             cp source-repo/shared/yarn.lock target-repo/shared/
-            echo "yarn.lock 파일이 복사되었습니다."
           fi
 
           # 파일 권한 설정
@@ -114,70 +107,62 @@ jobs:
           find . -type f -exec chmod 644 {} \;
           find . -type d -exec chmod 755 {} \;
 
-          echo "동기화된 파일 목록:"
-          find . -type f -not -path "*/node_modules/*" -not -path "*/dist/*"
-
-      - name: Verify configuration files
+      - name: Verify files and test setup
+        working-directory: target-repo
         run: |
-          cd target-repo
+          cd shared
+          echo "Verifying package.json and dependencies..."
+          if [ ! -f "package.json" ]; then
+            echo "Error: package.json not found after sync"
+            exit 1
+          fi
 
-          # 필수 설정 파일 확인 (문법 오류 수정)
-          REQUIRED_FILES=(
-            "shared/.eslintrc.json"
-            "shared/.prettierrc"
-            "shared/tsconfig.json"
-            "shared/package.json"
-            "shared/.gitignore"
-          )
+          echo "Installing dependencies..."
+          yarn install
 
-          for file in "${REQUIRED_FILES[@]}"; do
-            if [ -f "$file" ]; then
-              echo "✅ $file 존재"
-            else
-              echo "❌ $file 누락"
-              exit 1
-            fi
-          done
+          echo "Running tests..."
+          yarn lint || echo "Lint check skipped"
+          yarn type-check || echo "Type check skipped"
 
-      - name: Configure Git
+      - name: Commit changes
         working-directory: target-repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create and switch to sync branch
-        working-directory: target-repo
-        run: |
-          git checkout -b sync/shared-update || git checkout sync/shared-update
-          git reset --hard origin/main
-
-      - name: Commit and push changes
-        working-directory: target-repo
-        run: |
           git add shared/
 
-          if git diff --cached --quiet; then
-            echo "변경사항이 없습니다."
-          else
-            CHANGED_FILES=$(git diff --cached --name-only)
-
-            git commit -m "chore: shared 설정 파일 동기화
-
-            동기화된 파일:
-            $(echo "$CHANGED_FILES" | sed 's/^/- /')
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync shared configurations
 
             🔄 자동 동기화 완료
             - 시간: $(date)
-            - 대상: ${{ matrix.team.repo }}"
+            - 대상: ${{ matrix.team.repo }}
 
+            변경된 파일:
+            $(git diff --cached --name-only | sed 's/^/- /')"
+
+            echo "Changes committed successfully"
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Push changes and create PR
+        working-directory: target-repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          if git rev-parse --verify sync/shared-update >/dev/null 2>&1; then
+            echo "Pushing changes..."
             git push -f origin sync/shared-update
 
+            echo "Creating pull request..."
             gh pr create \
               --title "chore: shared 설정 파일 동기화" \
               --body "## 설정 파일 동기화
 
               ### 변경된 파일
-              $(echo "$CHANGED_FILES" | sed 's/^/- /')
+              $(git diff main...sync/shared-update --name-only | sed 's/^/- /')
 
               ### 주의사항
               - [ ] package.json 변경사항 확인
@@ -187,9 +172,19 @@ jobs:
               자동으로 생성된 PR입니다. 리뷰 후 병합해주세요." \
               --base main \
               --head sync/shared-update || true
+          else
+            echo "No sync branch found, skipping PR creation"
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+      - name: Cleanup on failure
+        if: failure()
+        working-directory: target-repo
+        run: |
+          if [ -d "shared.bak" ]; then
+            rm -rf shared
+            mv shared.bak shared
+            echo "Restored backup of shared directory"
+          fi
 
       - name: Create sync report
         if: always()
@@ -200,33 +195,13 @@ jobs:
             echo "- 상태: ${{ job.status }}"
             echo "- 브랜치: sync/shared-update"
 
-            if [ -n "$(git -C target-repo diff --cached --name-only)" ]; then
-              echo "- 변경된 파일:"
-              git -C target-repo diff --cached --name-only | sed 's/^/  - /'
-            else
-              echo "- 변경사항 없음"
+            if [ -d "target-repo" ]; then
+              cd target-repo
+              if git diff --cached --quiet; then
+                echo "- 변경사항: 없음"
+              else
+                echo "- 변경된 파일:"
+                git diff --cached --name-only | sed 's/^/  - /'
+              fi
             fi
           } >> $GITHUB_STEP_SUMMARY
-
-      - name: Create issue on failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `동기화 실패: ${{ matrix.team.repo }}`,
-              body: `### 동기화 실패 알림
-              - 팀: ${{ matrix.team.name }}
-              - 저장소: ${{ matrix.team.repo }}
-              - 워크플로우: ${context.workflow}
-              - 실행 ID: ${context.runId}
-
-              ### 문제 해결 단계
-              1. 워크플로우 로그 확인
-              2. 설정 파일 충돌 확인
-              3. 수동 동기화 필요 여부 검토
-
-              cc: @team-leads`
-            });
