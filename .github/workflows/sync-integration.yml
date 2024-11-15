@@ -6,7 +6,7 @@ on:
     paths:
       - 'shared/**'
       - '.github/workflows/**'
-  workflow_dispatch:  # 수동 실행 옵션 추가
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,14 +14,14 @@ permissions:
   pull-requests: write
 
 jobs:
-  quality-check:    # validate job을 quality-check로 변경
+  quality-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'yarn'  # yarn 캐시 설정 추가
+          cache: 'yarn'
 
       - name: Install dependencies
         working-directory: ./shared
@@ -29,8 +29,7 @@ jobs:
 
       - name: Run quality checks
         working-directory: ./shared
-        run: |
-          yarn check-all  # lint, format:check, type-check를 한번에 실행
+        run: yarn check-all
 
   sync:
     needs: quality-check
@@ -52,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.PAT_TOKEN }}
-          fetch-depth: 0  # 전체 히스토리 가져오기
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -78,12 +77,13 @@ jobs:
           source-dir: 'shared'
           pat-token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Create Pull Request to Team Repository
+      - name: Create Pull Request
+        id: create-pr
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.PAT_TOKEN }}
           commit-message: "chore: sync shared configurations"
-          title: "🔄 Sync shared configurations"
+          title: "🔄 Sync shared configurations for ${{ matrix.team.name }} team"
           body: |
             This PR syncs the latest shared configurations from the main repository.
 
@@ -99,4 +99,8 @@ jobs:
           labels: |
             sync
             automated
-          repository: KDT-PWA-Class-One-Group/${{ matrix.team.repo }}
+
+      - name: PR Result
+        if: steps.create-pr.outputs.pull-request-number
+        run: |
+          echo "PR created/updated: ${{ steps.create-pr.outputs.pull-request-url }}"
