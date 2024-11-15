@@ -42,20 +42,35 @@ jobs:
 
       - name: Sync shared directory
         run: |
-          # Center의 shared를 팀 저장소로 복사
+          # 디렉토리 존재 확인
+          if [ ! -d "center-repo/shared" ]; then
+            echo "Error: shared directory not found in center repository"
+            exit 1
+          fi
+
+          # 동기화 실행
           rm -rf team-repo/shared
           cp -r center-repo/shared team-repo/
 
-      - name: Commit and push changes
+          # 복사 확인
+          if [ ! -d "team-repo/shared" ]; then
+            echo "Error: sync failed - shared directory not copied"
+            exit 1
+          fi
+
+      - name: Configure Git
         working-directory: team-repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Commit and push if changed
+        working-directory: team-repo
+        run: |
           git add shared/
-          if git diff --staged --quiet; then
+          if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore: sync shared directory from center repository [skip ci]"
+            git commit -m "chore: sync shared configurations [skip ci]"
             git push
           fi
