@@ -25,5 +25,7 @@
     "node": ">=20.9.0",
     "yarn": ">=1.22.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "react": "^18.3.1"
+  }
 }
