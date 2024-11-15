@@ -1,0 +1,46 @@
+name: Sync Monitoring
+
+on:
+  workflow_run:
+    workflows: ["Sync Project Setup"]
+    types:
+      - completed
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check sync logs
+        run: |
+          if [ -d "logs" ]; then
+            echo "최근 동기화 로그:"
+            ls -lt logs | head -n 5
+
+            # 최근 로그 파일 읽기
+            LATEST_LOG=$(ls -t logs | head -n 1)
+            if [ ! -z "$LATEST_LOG" ]; then
+              echo "로그 내용:"
+              cat "logs/$LATEST_LOG"
+            fi
+          fi
+
+      - name: Create sync report
+        if: always()
+        run: |
+          echo "### 동기화 상태 보고서" > report.md
+          echo "실행 시간: $(date)" >> report.md
+          echo "상태: ${{ job.status }}" >> report.md
+
+          if [ -d "logs" ]; then
+            echo "### 최근 동기화 기록" >> report.md
+            ls -lt logs | head -n 5 >> report.md
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: sync-report
+          path: report.md
